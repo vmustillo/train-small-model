@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import os
+import tiktoken
 
 # Data loading helper
 def get_batch(split):
@@ -159,14 +160,15 @@ if __name__ == "__main__":
 
     with open(data_path, 'r', encoding='utf-8') as f:
         text = f.read()
+    
+    # 3. Create the Tokenizer (UPGRADED TO TIKTOKEN BPE)
+    print("Initializing BPE Tokenizer...")
+    enc = tiktoken.get_encoding("cl100k_base") # The GPT-4 tokenizer
+    vocab_size = enc.n_vocab # Jumps from ~100 to 100,277!
 
-    # 3. Create the Tokenizer (Character-level mapping)
-    chars = sorted(list(set(text)))
-    vocab_size = len(chars)
-    stoi = { ch:i for i,ch in enumerate(chars) }
-    itos = { i:ch for i,ch in enumerate(chars) }
-    encode = lambda s: [stoi[c] for c in s] 
-    decode = lambda l: ''.join([itos[i] for i in l])
+    # tiktoken encode/decode functions
+    encode = lambda s: enc.encode(s, allowed_special={"<|endoftext|>"})
+    decode = lambda l: enc.decode(l)
 
     # Train and test splits
     data = torch.tensor(encode(text), dtype=torch.long)

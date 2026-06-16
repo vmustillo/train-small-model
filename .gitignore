@@ -11,3 +11,4 @@ wheels/
 train.jsonl
 train.txt
 .env
+mac_coder_model.pth
