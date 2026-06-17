@@ -178,6 +178,16 @@ if __name__ == "__main__":
 
     # 5. Execution and Training Loop
     model = LanguageModel().to(device)
+
+    checkpoint_path = 'mac_coder_model.pth'
+    if os.path.exists(checkpoint_path):
+        print(f"\n[+] Found existing weights at '{checkpoint_path}'")
+        # Load the weights into the model
+        model.load_state_dict(torch.load(checkpoint_path, map_location=device, weights_only=True))
+        print("[+] Resuming training from saved state!")
+    else:
+        print("\n[-] No existing weights found. Starting from random initialization!")
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
     print("Starting training from scratch...")
