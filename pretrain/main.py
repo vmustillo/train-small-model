@@ -1,5 +1,5 @@
 def main():
-    print("Hello from train-very-small-model!")
+    print("Hello from pretrain!")
 
 
 if __name__ == "__main__":
