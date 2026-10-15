@@ -4,6 +4,27 @@ from torch.nn import functional as F
 import os
 import tiktoken
 
+# 1. Hyperparameters for a Laptop-Sized Scratch Model
+batch_size = 32      # How many independent sequences will we process in parallel?
+block_size = 128     # What is the maximum context length (window size)?
+max_iters = 2000
+eval_interval = 200
+learning_rate = 1e-3
+eval_iters = 50
+n_embd = 128         # Embedding dimension
+n_head = 4           # Number of self-attention heads
+n_layer = 4          # Number of transformer layers
+dropout = 0.1
+device = 'mps' if torch.backends.mps.is_available() else 'cpu'
+
+# 2. Create the Tokenizer (UPGRADED TO TIKTOKEN BPE)
+enc = tiktoken.get_encoding("cl100k_base") # The GPT-4 tokenizer
+vocab_size = enc.n_vocab # Jumps from ~100 to 100,277!
+
+# tiktoken encode/decode functions
+encode = lambda s: enc.encode(s, allowed_special={"<|endoftext|>"})
+decode = lambda l: enc.decode(l)
+
 # Data loading helper
 def get_batch(split):
     data_set = train_data if split == 'train' else val_data
@@ -138,21 +159,9 @@ class LanguageModel(nn.Module):
         return idx
 
 if __name__ == "__main__":
-    # 1. Hyperparameters for a Laptop-Sized Scratch Model
-    batch_size = 32      # How many independent sequences will we process in parallel?
-    block_size = 128     # What is the maximum context length (window size)?
-    max_iters = 2000
-    eval_interval = 200
-    learning_rate = 1e-3
-    eval_iters = 50
-    n_embd = 128         # Embedding dimension
-    n_head = 4           # Number of self-attention heads
-    n_layer = 4          # Number of transformer layers
-    dropout = 0.1
-    device = 'mps' if torch.backends.mps.is_available() else 'cpu'
     print(f"Using device: {device.upper()}")
 
-    # 2. Load the Dataset (Your Repository Data)
+    # 3. Load the Dataset (Your Repository Data)
     # For testing, point this to a single large source file or a concatenated file of your repo
     data_path = 'train.txt' 
     if not os.path.exists(data_path):
@@ -160,15 +169,6 @@ if __name__ == "__main__":
 
     with open(data_path, 'r', encoding='utf-8') as f:
         text = f.read()
-    
-    # 3. Create the Tokenizer (UPGRADED TO TIKTOKEN BPE)
-    print("Initializing BPE Tokenizer...")
-    enc = tiktoken.get_encoding("cl100k_base") # The GPT-4 tokenizer
-    vocab_size = enc.n_vocab # Jumps from ~100 to 100,277!
-
-    # tiktoken encode/decode functions
-    encode = lambda s: enc.encode(s, allowed_special={"<|endoftext|>"})
-    decode = lambda l: enc.decode(l)
 
     # Train and test splits
     data = torch.tensor(encode(text), dtype=torch.long)
@@ -190,7 +190,7 @@ if __name__ == "__main__":
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
-    print("Starting training from scratch...")
+    print("Starting training...")
     for iter in range(max_iters):
         if iter % eval_interval == 0:
             losses = estimate_loss()
@@ -209,4 +209,4 @@ if __name__ == "__main__":
 
     # Save the model
     print("Saving model weights...")
-    torch.save(model.state_dict(), 'mac_coder_model.pth')
+    torch.save(model.state_dict(), checkpoint_path)

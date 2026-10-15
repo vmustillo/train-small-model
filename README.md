@@ -1,52 +1,102 @@
 # Train Very Small Model
 
-This repository contains scripts to train a miniature, character-level transformer language model from scratch. It is designed to be small enough to train on a laptop (using Apple Silicon MPS or CPU). It's built similarly to a nanoGPT-style architecture and includes tools to prepare a dataset from any local code repository, train the model, and generate text from the trained weights.
+This repository contains scripts to train a miniature transformer language model from scratch on source code. It is designed to be small enough to train on a laptop (using Apple Silicon MPS or CPU). It's built similarly to a nanoGPT-style architecture (4 layers, 4 heads, 128-dim embeddings, 128-token context) and uses the GPT-4 BPE tokenizer (`tiktoken` `cl100k_base`, ~100k vocab).
+
+There are two workflows:
+
+- **Simple training** (`train/`): compile a single Go repository into a text file and train on it.
+- **Pretraining** (`pretrain/` + `train/train_bpe.py`): tokenize many repositories in parallel into binary files, then train on them using memory-mapped data.
 
 ## Project Structure
 
-- `prep_data.py`: A utility script that compiles a local codebase into a single text file (`train.txt`) to be used as the training dataset.
-- `train.py`: The main training loop. Defines the model architecture (a character-level Transformer), loads the dataset, trains the model, and saves the final weights to `mac_coder_model.pth`.
-- `generate.py`: A helper script containing a function for loading the trained model weights (`mac_coder_model.pth`) and generating new text sequences.
+### `train/`
+
+- `prep_data.py`: Compiles the `.go` files (excluding tests) from a local repository into a single text file (`train.txt`), with a `// File: <name>` header before each file.
+- `train.py`: Defines the model architecture (a Transformer with multi-head causal self-attention), trains it on `train.txt`, prints a generated sample, and saves the weights to `mac_coder_model.pth`.
+- `train_bpe.py`: Same model, but trains on the pre-tokenized `train.bin`/`val.bin` files produced by `pretrain/pretrain.py`.
+- `generate.py`: Loads saved weights from `mac_coder_model.pth` and generates text.
+
+### `pretrain/`
+
+- `pretrain.py`: Scans every repository in a folder for source files (`.go`, `.py`, `.js`, `.ts`, `.rs`, `.cpp`, `.h`, `.java`), tokenizes them in parallel using all CPU cores, splits them 90/10 into train/validation, and writes `pretokenized_data/train.bin` and `pretokenized_data/val.bin` (`uint32` token IDs).
 
 ## Prerequisites
 
-This project uses [uv](https://github.com/astral-sh/uv) to manage dependencies. The required packages are specified in `pyproject.toml`.
+This project uses [uv](https://github.com/astral-sh/uv) to manage dependencies. `train/` and `pretrain/` are separate projects, each with its own `pyproject.toml`.
 
 1. Install `uv` if you haven't already.
-2. Install dependencies:
+2. Install dependencies for each project:
    ```bash
-   uv sync
+   cd train && uv sync
+   cd ../pretrain && uv sync
    ```
 
-## Usage
+## Simple Training
+
+All commands are run from the `train/` folder.
 
 ### 1. Prepare the Data
 
-You need a dataset to train on. The `prep_data.py` script will compile files from a specified repository into `train.txt`.
-
-First, create a `.env` file in the root directory and specify the path to the code you want to train on:
+Create `train/.env` with the path to the repository you want to train on. Relative paths are resolved from the `train/` folder:
 
 ```env
 PATH_TO_TRAINING_CODE=/path/to/your/local/repo
 ```
 
-Then, run the data preparation script:
+Then run:
 
 ```bash
 uv run prep_data.py
 ```
-This will generate `train.txt` in the current directory.
+
+This will generate `train.txt` in the `train/` folder.
 
 ### 2. Train the Model
-
-Once your `train.txt` is ready, you can start training. The model is configured with hyperparameters suitable for a small model. By default, it will use `mps` (Metal Performance Shaders) if available on macOS, otherwise it will fall back to `cpu`.
 
 ```bash
 uv run train.py
 ```
 
-During training, the script will print the training and validation loss. At the end of the training iterations, it will output a sample of generated text and save the model weights to `mac_coder_model.pth`.
+By default, it will use `mps` (Metal Performance Shaders) if available on macOS, otherwise it will fall back to `cpu`. During training, the script prints the training and validation loss. At the end, it prints a sample of generated text and saves the model weights to `mac_coder_model.pth`.
 
-### 3. Generate Code
+If `mac_coder_model.pth` already exists, training resumes from those weights.
 
-You can use the `load_previous_model_weights` function from `generate.py` to load the saved `mac_coder_model.pth` and generate text. Make sure to pass the appropriate model architecture and device.
+## Pretraining
+
+### 1. Tokenize the Repositories
+
+Create `pretrain/.env` with the path to a folder containing one or more repositories. Every subfolder is treated as a repository. Relative paths are resolved from the `pretrain/` folder:
+
+```env
+PATH_TO_REPOS_FOLDER=/path/to/folder/of/repos
+```
+
+Then, from the `pretrain/` folder, run:
+
+```bash
+uv run pretrain.py
+```
+
+This writes `train.bin` and `val.bin` to `pretrain/pretokenized_data/`.
+
+### 2. Train on the Tokenized Data
+
+From the `train/` folder, run:
+
+```bash
+uv run train_bpe.py
+```
+
+This reads `../pretrain/pretokenized_data/*.bin` with `np.memmap`, so the dataset doesn't have to fit in memory. Like `train.py`, it resumes from `mac_coder_model.pth` if it exists and saves the weights there when finished. Both scripts use the same model and checkpoint file, so you can pretrain with `train_bpe.py` and then continue training on a single repository with `train.py`.
+
+## Generate Code
+
+From the `train/` folder, run:
+
+```bash
+uv run generate.py
+```
+
+This loads `mac_coder_model.pth` and prints 300 generated tokens. You can also use the `load_previous_model_weights(device, path)` function from your own code.
+
+Values set in your shell environment take precedence over values in `.env` files.
